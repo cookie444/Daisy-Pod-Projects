@@ -8,6 +8,7 @@ folder is a standalone firmware project with its own Makefile.
 | [delay](delay/) | Analog-style delay — darkening repeats, tap tempo, tape wobble |
 | [stutter-glitch](stutter-glitch/) | Euclidean-pattern stutter/glitch — CHOP, STUTTER, PITCH, REVERSE |
 | [buffer-scramble](buffer-scramble/) | Slice re-sequencer — captures a window of 8 slices and replays it shuffled |
+| [specter-resonator](specter-resonator/) | Resonant bank — your playing excites 16 tuned resonators, freeze holds the ring. Builds under `experimental-builds/` |
 
 ## Setup
 
@@ -60,6 +61,7 @@ Daisy-Pod-Projects/
 ├── delay/            # Analog-style delay pedal
 ├── stutter-glitch/   # Euclidean stutter/glitch pedal
 ├── buffer-scramble/  # Slice re-sequencer
+├── specter-resonator/  # Resonant bank, builds under experimental-builds/
 ├── lib/              # libDaisy + DaisySP (gitignored, see Setup)
 └── .gitignore
 ```
