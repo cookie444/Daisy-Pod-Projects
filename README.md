@@ -7,6 +7,7 @@ folder is a standalone firmware project with its own Makefile.
 |---------|------------|
 | [delay](delay/) | Analog-style delay — darkening repeats, tap tempo, tape wobble |
 | [stutter-glitch](stutter-glitch/) | Euclidean-pattern stutter/glitch — CHOP, STUTTER, PITCH, REVERSE |
+| [buffer-scramble](buffer-scramble/) | Slice re-sequencer — captures a window of 8 slices and replays it shuffled |
 
 ## Setup
 
@@ -58,6 +59,7 @@ make program-dfu
 Daisy-Pod-Projects/
 ├── delay/            # Analog-style delay pedal
 ├── stutter-glitch/   # Euclidean stutter/glitch pedal
+├── buffer-scramble/  # Slice re-sequencer
 ├── lib/              # libDaisy + DaisySP (gitignored, see Setup)
 └── .gitignore
 ```
