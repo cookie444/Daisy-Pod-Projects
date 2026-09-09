@@ -1,0 +1,63 @@
+# Daisy Pod Projects
+
+Effects for the **Electrosmith Daisy Pod**, built on libDaisy and DaisySP. Each
+folder is a standalone firmware project with its own Makefile.
+
+| Project | What it is |
+|---------|------------|
+| [delay](delay/) | Analog-style delay — darkening repeats, tap tempo, tape wobble |
+| [stutter-glitch](stutter-glitch/) | Euclidean-pattern stutter/glitch — CHOP, STUTTER, PITCH, REVERSE |
+
+## Setup
+
+Requires the [Daisy Toolchain](https://github.com/electro-smith/DaisyWiki/wiki/1.-Setting-Up-Your-Development-Environment)
+(arm-none-eabi-gcc, make, dfu-util). On Windows, run `make` from Git Bash.
+
+libDaisy and DaisySP are shared by every project and live in `lib/`, which is
+gitignored. Fetch them once after cloning:
+
+```bash
+mkdir -p lib
+git clone https://github.com/electro-smith/libDaisy.git lib/libDaisy
+git clone https://github.com/electro-smith/DaisySP.git lib/DaisySP
+
+# Build the libraries once (this takes a few minutes)
+make -C lib/libDaisy
+make -C lib/DaisySP
+```
+
+If you already have them elsewhere, skip the clone and point the build at them:
+
+```bash
+make LIBDAISY_DIR=/path/to/libDaisy DAISYSP_DIR=/path/to/DaisySP
+```
+
+## Building and flashing
+
+From inside a project folder:
+
+```bash
+cd delay            # or stutter-glitch
+make -j8
+```
+
+Put the Pod into DFU mode: hold **BOOT**, press **RESET**, release **RESET**,
+then release **BOOT**. Then:
+
+```bash
+make program-dfu
+```
+
+> `dfu-util` prints `Error during download get_status` at the end. This is
+> expected — the device has already rebooted out of DFU mode. The flash
+> succeeded.
+
+## Project Structure
+
+```
+Daisy-Pod-Projects/
+├── delay/            # Analog-style delay pedal
+├── stutter-glitch/   # Euclidean stutter/glitch pedal
+├── lib/              # libDaisy + DaisySP (gitignored, see Setup)
+└── .gitignore
+```
