@@ -6,20 +6,23 @@ Builds live under `experimental-builds/`, each in its own folder with its own Ma
 
 | Build | Notes |
 |-------|-------|
-| [experimental-builds/1dot1](experimental-builds/1dot1/) | First working revision. 16 partials over three octaves, wet-path compressor, freeze swell, 12 scale presets |
+| [experimental-builds/1dot1](experimental-builds/1dot1/) | **Current favourite.** First working revision. 16 partials over three octaves, wet-path compressor, freeze swell, 12 scale presets. Encoder = tuning, button 1 = freeze only |
+| [experimental-builds/1dot2](experimental-builds/1dot2/) | Superseded. 24 partials with a density-following span — the snapping filled gaps with off-scale semitones and the voicings came out muddy |
+| [experimental-builds/1dot3](experimental-builds/1dot3/) | Voiced as whole octaves of the tuning, key on the encoder (up or down), tuning on button 1 tap, freeze on hold |
+| [experimental-builds/1dot4](experimental-builds/1dot4/) | Same voicing, controls swapped: tuning on the encoder (up or down), key on button 1 tap |
 
 Build numbering is `<major>dot<minor>` — `1dot1` is build 1.1. Flash-ready
 binaries land in that folder's `build/` directory after `make`.
 
-## Controls (build 1.1)
+## Controls (build 1.3)
 
 | Control | Function |
 |---------|----------|
 | Knob 1 | DAMPING — decay time of the bank, 0.03 s to 1.0 s |
 | Knob 2 | BLEND — dry signal through to pure resonator |
-| Button 1 | FREEZE — hold to gate the excitation and hold the ring |
+| Button 1 | Tap steps the key, a semitone up. Hold past ~350 ms to FREEZE the ring |
 | Button 2 | STRIKE — press for a noise burst, hold to bow with noise |
-| Encoder turn | Scale preset (12 of them) |
+| Encoder turn | Tuning — the 12 chord shapes, up or down |
 | Encoder press | Bypass toggle — both LEDs go dark |
 | LED 1 | White, brightness follows how hard the bank is ringing |
 | LED 2 | Scale colour, full brightness while frozen |
@@ -29,7 +32,7 @@ binaries land in that folder's `build/` directory after `make`.
 From inside a build folder:
 
 ```bash
-cd experimental-builds/1dot1
+cd experimental-builds/1dot3
 make -j8
 make program-dfu   # with the Pod in DFU mode
 ```
