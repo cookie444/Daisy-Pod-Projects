@@ -1,5 +1,5 @@
 # Project Name
-TARGET = pad-machine
+TARGET = oddway
 
 # Sources
 CPP_SOURCES = main.cpp

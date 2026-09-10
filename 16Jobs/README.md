@@ -1,4 +1,4 @@
-# Pattern Filter
+# 16Jobs
 
 A step filter sequencer for the **Electrosmith Daisy Pod**, built on libDaisy and DaisySP. A sixteen step pattern drives a resonant lowpass, so the cutoff moves in time with the music instead of wobbling around. The pattern is Euclidean, same as the stutter pedal: turn the density up and the hits spread as evenly as possible, with the downbeat always landing on one.
 
@@ -64,7 +64,7 @@ make LIBDAISY_DIR=/path/to/libDaisy DAISYSP_DIR=/path/to/DaisySP
 make -j8
 ```
 
-Produces `build/pattern-filter.bin`.
+Produces `build/16jobs.bin`.
 
 ## Flashing
 
@@ -95,7 +95,7 @@ All the "taste" constants are grouped at the top of `main.cpp`:
 ## Project Structure
 
 ```
-pattern-filter/
+16Jobs/
 ├── main.cpp      # All pedal logic (control handling + audio callback)
 ├── Makefile      # Build config, library paths overridable
 ├── README.md

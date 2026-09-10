@@ -11,11 +11,11 @@ folder is a standalone firmware project with its own Makefile.
 | [specter-resonator](specter-resonator/) | Resonant bank — your playing excites 16 tuned resonators, freeze holds the ring. Builds under `experimental-builds/` |
 | [legacy-harmonic-saturator](legacy-harmonic-saturator/) | Dual-engine guitar drive — two models, series in either order or parallel, cabinet sim, 8 presets, tuner |
 | [frugal-looper](frugal-looper/) | 60 second stereo looper — overdub, stop, erase, half speed / reverse / double |
-| [pattern-filter](pattern-filter/) | Step filter sequencer — Euclidean cutoff pattern with resonance and five shapes |
-| [barberpole](barberpole/) | Endless rising or falling allpass sweep with feedback |
-| [formant](formant/) | Vowel filter — three formants, tap-synced sweep, voice size |
-| [pad-machine](pad-machine/) | Auto-swell into a hand-built Schroeder reverb with infinite freeze |
-| [wobble](wobble/) | Tape wow, flutter and drift, stereo modulated delay |
+| [16Jobs](16Jobs/) | Step filter sequencer — Euclidean cutoff pattern with resonance and five shapes |
+| [SuperCut](SuperCut/) | Endless rising or falling allpass sweep with feedback |
+| [OddWay](OddWay/) | Vowel filter — three formants, tap-synced sweep, voice size |
+| [ClantonCookie](ClantonCookie/) | Auto-swell into a hand-built Schroeder reverb with infinite freeze |
+| [vertigo](vertigo/) | Tape wow, flutter and drift, stereo modulated delay |
 
 ## Setup
 
@@ -71,11 +71,11 @@ Daisy-Pod-Projects/
 ├── specter-resonator/  # Resonant bank, builds under experimental-builds/
 ├── legacy-harmonic-saturator/  # Dual-engine drive
 ├── frugal-looper/    # 60 second stereo looper
-├── pattern-filter/   # Step filter sequencer
-├── barberpole/       # Endless sweeping phaser
-├── formant/          # Vowel filter
-├── pad-machine/      # Auto-swell into infinite reverb
-├── wobble/           # Tape modulation
+├── 16Jobs/           # Step filter sequencer
+├── SuperCut/         # Endless sweeping phaser
+├── OddWay/           # Vowel filter
+├── ClantonCookie/    # Auto-swell into infinite reverb
+├── vertigo/          # Tape modulation
 ├── lib/              # libDaisy + DaisySP (gitignored, see Setup)
 └── .gitignore
 ```

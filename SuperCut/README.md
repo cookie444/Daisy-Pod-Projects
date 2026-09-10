@@ -1,4 +1,4 @@
-# Barberpole
+# SuperCut
 
 An endless sweeping phaser for the **Electrosmith Daisy Pod**, built on libDaisy and DaisySP. The notches climb forever (or fall forever) instead of bouncing back and forth like a normal phaser.
 
@@ -65,7 +65,7 @@ make program-dfu   # with the Pod in DFU mode: hold BOOT, tap RESET
 ## Project Structure
 
 ```
-barberpole/
+SuperCut/
 ├── main.cpp
 ├── Makefile
 ├── README.md

@@ -1,4 +1,4 @@
-# Formant
+# OddWay
 
 A vowel filter for the **Electrosmith Daisy Pod**, built on libDaisy and DaisySP. Three resonant bandpasses sit where your vocal tract would, so a guitar starts to say "aah", "eee", "ooo". Sweep it with the tap tempo or step it with a button and it talks.
 
@@ -65,7 +65,7 @@ make program-dfu   # with the Pod in DFU mode: hold BOOT, tap RESET
 ## Project Structure
 
 ```
-formant/
+OddWay/
 ├── main.cpp
 ├── Makefile
 ├── README.md

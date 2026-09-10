@@ -1,5 +1,5 @@
 # Project Name
-TARGET = pattern-filter
+TARGET = supercut
 
 # Sources
 CPP_SOURCES = main.cpp

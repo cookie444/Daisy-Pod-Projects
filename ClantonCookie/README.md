@@ -1,4 +1,4 @@
-# Pad Machine
+# ClantonCookie
 
 An auto-swell into an infinite reverb for the **Electrosmith Daisy Pod**, built on libDaisy and DaisySP. Play a note and it blooms in with no attack, then you freeze the tail and play over it. Single notes become pads.
 
@@ -67,7 +67,7 @@ make program-dfu   # with the Pod in DFU mode: hold BOOT, tap RESET
 ## Project Structure
 
 ```
-pad-machine/
+ClantonCookie/
 ├── main.cpp
 ├── Makefile
 ├── README.md

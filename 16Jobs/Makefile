@@ -1,5 +1,5 @@
 # Project Name
-TARGET = formant
+TARGET = 16jobs
 
 # Sources
 CPP_SOURCES = main.cpp

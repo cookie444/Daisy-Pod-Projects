@@ -1,4 +1,4 @@
-# Wobble
+# vertigo
 
 Tape style modulation for the **Electrosmith Daisy Pod**, built on libDaisy and DaisySP. A short modulated delay gives you wow, flutter and drift, with the two channels offset so it spreads across the stereo field.
 
@@ -75,7 +75,7 @@ make program-dfu   # with the Pod in DFU mode: hold BOOT, tap RESET
 ## Project Structure
 
 ```
-wobble/
+vertigo/
 ├── main.cpp
 ├── Makefile
 ├── README.md

@@ -1,5 +1,5 @@
 # Project Name
-TARGET = wobble
+TARGET = vertigo
 
 # Sources
 CPP_SOURCES = main.cpp

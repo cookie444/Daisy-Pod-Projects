@@ -1,5 +1,5 @@
 # Project Name
-TARGET = barberpole
+TARGET = clantoncookie
 
 # Sources
 CPP_SOURCES = main.cpp
