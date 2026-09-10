@@ -21,12 +21,48 @@ per-model EQ, and aliasing-free clipping.
 | Button 1 hold | Cabinet sim on / off |
 | Button 2 tap | Gate: off → low → high |
 | Button 2 hold | Pickup load compensation on / off |
+| **Tap both buttons** | Preset menu: encoder picks a slot, encoder tap loads, button 1 saves, button 2 exits |
+| **Hold both buttons** | Tuner (output muted). Any single tap exits |
 | LED 1 | Model colour, brightness follows level, shifts red when clipping |
 | LED 2 | Routing colour, flashes white on any change |
 
 Defaults are A = SOFT, B = BOOST, routing = B→A, i.e. a clean boost into an
 overdrive, which is the classic pairing. Flip to A→B (button 1) for drive into
 boost, or to a parallel route for two models side by side.
+
+## Presets
+
+Eight slots in QSPI flash. Everything is stored: both models, the routing, the
+gate, cab and load-comp switches, and the two knob positions.
+
+- **Tap both buttons** to open the menu — LED 1 turns a different hue per slot and pulses.
+- **Encoder** picks the slot, **encoder tap** loads it, **button 1** saves to it, **button 2** exits.
+
+The last slot you loaded or saved is recalled at power on. Knobs use pickup
+semantics: after a recall, DRIVE and LEVEL stay where the preset left them until
+you physically move a knob past 3% travel, at which point it takes over. That
+way a recalled sound is really the recalled sound, and the knobs can never be
+silently lying to you — if you touch one, it wins.
+
+On a chip that has never been written, the eight slots are initialised to the
+defaults below and slot 0 is loaded.
+
+## Tuner
+
+Hold both buttons for a second. The output mutes and the LEDs become the
+display:
+
+| Reading | LEDs |
+|---------|------|
+| In tune (±5 cents) | both green |
+| Slightly off (5–25 cents) | amber, LED 1 if flat / LED 2 if sharp |
+| Way off (>25 cents) | red, LED 1 if flat / LED 2 if sharp |
+| No note | both dim white |
+
+It measures the period of the fundamental with a Schmitt trigger and clusters
+recent periods to reject mis-triggers, so it reads within a fraction of a cent
+rather than quantising to the sample rate. It is always listening on the clean
+input, so it locks as soon as you open it. Any single tap exits.
 
 ## Models
 
@@ -135,6 +171,11 @@ Constants are grouped at the top of `main.cpp`:
 | `kSplitHz` | `220` | Parallel crossover frequency |
 | `kRouteFade` | `0.0015` | Routing crossfade, ~14 ms |
 | `kGateThresh[]` | `0` / `0.0012` / `0.004` | Gate thresholds on the input |
+| `kPresetCount` | `8` | Preset slots in QSPI |
+| `kPickupThresh` | `0.03` | Knob travel needed to take over from a recalled preset |
+| `kTunerCutoff` | `900` | Tuner lowpass. Lower rejects more harmonics, higher tracks high notes better |
+| `kTunerHyst` | `0.25` | Trigger hysteresis as a fraction of peak. Raise it for very bright pickups |
+| `kTunerInTune` / `kTunerNear` | `5` / `25` | Cents thresholds for green / amber / red |
 
 Models themselves are the `kModels[]` table: pre-highpass, pre-peak, two
 clippers with an inter-stage gain, post-lowpass, post-peak, max gain in dB, and
@@ -152,7 +193,6 @@ legacy-harmonic-saturator/
 
 ## Next steps
 
-- Tuner mode on a long press of both buttons
 - Real IR convolution instead of the biquad cabinet (SDRAM is mostly unused)
 - 96 kHz operation (`SetAudioSampleRate` before `pod.Init()`) for more headroom
   above the top roll off

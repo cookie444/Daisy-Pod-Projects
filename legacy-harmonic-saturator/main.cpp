@@ -16,10 +16,18 @@
 //   Button 1 hold     cabinet sim on/off
 //   Button 2 tap      gate: off / low / high
 //   Button 2 hold     pickup load compensation on/off
+//   Tap both buttons  preset mode: encoder picks a slot, encoder tap loads,
+//                     button 1 saves, button 2 exits
+//   Hold both buttons tuner (muted). Any tap exits
+//
+// Presets live in QSPI flash and the last one used is recalled at power on.
+// Knobs use pickup: after a recall they stay where the preset left them until
+// you actually move them.
 // ---------------------------------------------------------------------------
 
 #include "daisysp.h"
 #include "daisy_pod.h"
+#include "util/PersistentStorage.h"
 
 using namespace daisysp;
 using namespace daisy;
@@ -50,6 +58,24 @@ static constexpr float kHoldMs     = 1000.f;  // longer than this is a hold
 static constexpr float kGateThresh[3] = {0.0f, 0.0012f, 0.0040f};
 static constexpr float kGateAttack     = 0.12f;
 static constexpr float kGateRelease    = 0.0006f;
+
+// Presets
+static constexpr int      kPresetCount = 8;
+static constexpr uint32_t kSettingsMagic = 0x4C485331u; // "LHS1"
+static constexpr float    kPickupThresh  = 0.03f;       // knob travel to take over
+
+// Tuner. A lowpass leaves the fundamental dominant, a Schmitt trigger with
+// hysteresis ignores the ripple the remaining harmonics leave on it, and the
+// crossing times are interpolated so the period is not quantised to samples.
+static constexpr float    kTunerCutoff  = 900.0f;
+static constexpr float    kTunerHyst    = 0.25f;        // fraction of peak
+static constexpr float    kTunerTol     = 0.02f;        // cluster tolerance
+static constexpr int      kTunerNeed    = 5;            // periods to agree
+static constexpr float    kTunerMinPeak = 0.004f;       // below this, silence
+static constexpr float    kTunerMinPer  = 34.0f;        // ~1.4 kHz
+static constexpr float    kTunerMaxPer  = 700.0f;       // ~69 Hz
+static constexpr float    kTunerInTune  = 5.0f;         // cents
+static constexpr float    kTunerNear    = 25.0f;        // cents
 
 // std::clamp is C++17, this builds as gnu++14
 static float ClampF(float x, float lo, float hi)
@@ -424,6 +450,149 @@ struct Cabinet
     }
 };
 
+// ---------------------------------------------------------------------------
+// Tuner
+//
+// Runs continuously off the clean input so it is ready the moment you call it
+// up. Cost is two biquads and a few compares per sample.
+// ---------------------------------------------------------------------------
+struct Tuner
+{
+    Biquad   lp1, lp2;
+    float    peak, prev;
+    float    last_t;
+    uint32_t n;
+    float    per[12];
+    int      pi, pcount;
+
+    void Init(float sr)
+    {
+        lp1.Reset();
+        lp2.Reset();
+        BiquadLowpass(lp1, kTunerCutoff, 0.7f, sr);
+        BiquadLowpass(lp2, kTunerCutoff, 0.7f, sr);
+        Reset();
+    }
+
+    void Reset()
+    {
+        peak = prev = 0.0f;
+        last_t      = -1.0f;
+        n           = 0;
+        pi = pcount = 0;
+        for(int i = 0; i < 12; i++)
+            per[i] = 0.0f;
+    }
+
+    void Process(float x)
+    {
+        float y = lp2.Process(lp1.Process(x));
+
+        float ax = fabsf(y);
+        peak     = ax > peak ? ax : peak + (ax - peak) * 0.00008f;
+        float thr = kTunerHyst * peak;
+
+        if(armed_ && peak > kTunerMinPeak && prev <= thr && y > thr)
+        {
+            float frac = (y != prev) ? (thr - prev) / (y - prev) : 0.0f;
+            float tc   = (float)n - 1.0f + frac;
+            if(last_t >= 0.0f)
+            {
+                float p = tc - last_t;
+                if(p >= kTunerMinPer && p <= kTunerMaxPer)
+                {
+                    per[pi] = p;
+                    pi      = (pi + 1) % 12;
+                    if(pcount < 12)
+                        pcount++;
+                }
+            }
+            last_t  = tc;
+            armed_  = false;
+        }
+        if(y < -thr)
+            armed_ = true;
+
+        prev = y;
+        n++;
+    }
+
+    // Largest cluster of periods within tolerance, averaged. Rejects the odd
+    // mis-trigger instead of letting it drag a median around.
+    float Estimate()
+    {
+        if(pcount < kTunerNeed)
+            return 0.0f;
+
+        float best = 0.0f;
+        int   bestn = 0;
+        for(int i = 0; i < pcount; i++)
+        {
+            float sum = 0.0f;
+            int   cnt = 0;
+            for(int j = 0; j < pcount; j++)
+            {
+                if(fabsf(per[j] - per[i]) <= kTunerTol * per[i])
+                {
+                    sum += per[j];
+                    cnt++;
+                }
+            }
+            if(cnt > bestn)
+            {
+                bestn = cnt;
+                best  = sum / (float)cnt;
+            }
+        }
+        return bestn >= kTunerNeed ? (float)pod.AudioSampleRate() / best : 0.0f;
+    }
+
+    bool armed_ = true;
+};
+
+// ---------------------------------------------------------------------------
+// Presets
+// ---------------------------------------------------------------------------
+struct PresetData
+{
+    int32_t model_a;
+    int32_t model_b;
+    int32_t route;
+    int32_t gate_idx;
+    int32_t cab_on;
+    int32_t comp_on;
+    float   drive;
+    float   level;
+};
+
+struct Settings
+{
+    PresetData presets[kPresetCount];
+    int32_t    last_slot;
+    uint32_t   magic;
+
+    // PersistentStorage only rewrites flash when the data actually changed,
+    // and it needs these to decide
+    bool operator==(const Settings& o) const
+    {
+        if(last_slot != o.last_slot || magic != o.magic)
+            return false;
+        for(int i = 0; i < kPresetCount; i++)
+        {
+            const PresetData& a = presets[i];
+            const PresetData& b = o.presets[i];
+            if(a.model_a != b.model_a || a.model_b != b.model_b
+               || a.route != b.route || a.gate_idx != b.gate_idx
+               || a.cab_on != b.cab_on || a.comp_on != b.comp_on
+               || a.drive != b.drive || a.level != b.level)
+                return false;
+        }
+        return true;
+    }
+
+    bool operator!=(const Settings& o) const { return !(*this == o); }
+};
+
 // Soft safety limiter. Transparent below the knee, hard ceiling at 1.0 so the
 // DAC never sees a rail-to-rail square wave.
 static float Safety(float x)
@@ -442,6 +611,8 @@ static float Safety(float x)
 static Cabinet cab;
 static DcCut in_dc;
 static Biquad  load_comp;
+static Tuner   tuner;
+static PersistentStorage<Settings> storage(pod.seed.qspi);
 
 static int   model_a = 1; // SOFT
 static int   model_b = 0; // BOOST
@@ -450,6 +621,22 @@ static int   gate_idx   = 1;
 static bool  cab_on     = true;
 static bool  comp_on    = true;
 static bool  bypass     = false;
+
+static bool  preset_mode = false;
+static int   slot        = 0;
+static bool  tuner_on    = false;
+static bool  save_req    = false;
+static float tuner_hz    = 0.0f;
+
+// Knob pickup: after a recall the stored value holds until you move the knob
+static float drive_val = 0.5f, level_val = 0.5f;
+static float knob_ref_d = 0.0f, knob_ref_l = 0.0f;
+static bool  knob_locked = false;
+
+// Both-button gesture: tap both for preset mode, hold both for the tuner
+static bool     both_down = false, both_seen = false, both_fired = false;
+static uint32_t both_t = 0;
+static uint32_t tuner_poll = 0;
 
 static float w[4] = {0.0f, 1.0f, 0.0f, 0.0f};
 static float cab_mix    = 1.0f;
@@ -462,6 +649,55 @@ static float flash      = 0.0f;
 static uint32_t press_enc = 0, press_b1 = 0, press_b2 = 0;
 static bool     enc_moved = false;
 static bool     hold_b1 = false, hold_b2 = false;
+
+// Applies a preset to the live state. `pickup` decides whether the stored knob
+// values take over (and lock until the knobs move) or are ignored.
+static const PresetData kDefaultPreset = {
+    1,    // model_a: SOFT
+    0,    // model_b: BOOST
+    1,    // route:   B -> A
+    1,    // gate:    low
+    1,    // cab on
+    1,    // comp on
+    0.5f, // drive
+    0.5f, // level
+};
+
+static void ApplyModels(float sr);
+
+static void ApplyPreset(const PresetData& p, bool pickup)
+{
+    model_a  = p.model_a % kNumModels;
+    model_b  = p.model_b % kNumModels;
+    route    = p.route & 3;
+    gate_idx = p.gate_idx % 3;
+    cab_on   = p.cab_on != 0;
+    comp_on  = p.comp_on != 0;
+    ApplyModels(pod.AudioSampleRate());
+
+    if(pickup)
+    {
+        drive_val = ClampF(p.drive, 0.0f, 1.0f);
+        level_val = ClampF(p.level, 0.0f, 1.0f);
+        // -1 means "not measured yet": the first audio block grabs the actual
+        // knob position, so a preset recalled at boot does not unlock itself
+        knob_ref_d  = -1.0f;
+        knob_ref_l  = -1.0f;
+        knob_locked = true;
+    }
+}
+
+static void CapturePreset(PresetData& p)
+{
+    p.model_a  = model_a;
+    p.model_b  = model_b;
+    p.route    = route;
+    p.gate_idx = gate_idx;
+    p.cab_on   = cab_on ? 1 : 0;
+    p.comp_on  = comp_on ? 1 : 0;
+    p.drive    = drive_val;
+    p.level    = level_val;
+}
 
 static void ApplyModels(float sr)
 {
@@ -511,84 +747,190 @@ void AudioCallback(AudioHandle::InterleavingInputBuffer  in,
     float sr = pod.AudioSampleRate();
 
     // --- controls ---------------------------------------------------------
-    float drive_k = ClampF(pod.knob1.Process(), 0.0f, 1.0f);
-    float level_k = ClampF(pod.knob2.Process(), 0.0f, 1.0f);
+    float raw_d = ClampF(pod.knob1.Process(), 0.0f, 1.0f);
+    float raw_l = ClampF(pod.knob2.Process(), 0.0f, 1.0f);
 
-    // Encoder: turn picks model A, held-turn picks model B, tap bypasses
-    int32_t inc = pod.encoder.Increment();
-    if(inc != 0)
+    // Knob pickup: the stored preset value holds until a knob actually moves
+    if(knob_locked)
     {
-        if(pod.encoder.Pressed())
+        if(knob_ref_d < 0.0f)
         {
-            model_b += inc;
-            model_b  = (model_b % kNumModels + kNumModels) % kNumModels;
-            enc_moved = true;
-            ApplyModels(sr);
+            knob_ref_d = raw_d;
+            knob_ref_l = raw_l;
         }
-        else
+        else if(fabsf(raw_d - knob_ref_d) > kPickupThresh
+                || fabsf(raw_l - knob_ref_l) > kPickupThresh)
         {
-            model_a += inc;
-            model_a  = (model_a % kNumModels + kNumModels) % kNumModels;
-            ApplyModels(sr);
+            knob_locked = false;
         }
     }
-    if(pod.encoder.RisingEdge())
+    if(!knob_locked)
     {
-        press_enc = System::GetNow();
-        enc_moved = false;
-    }
-    if(pod.encoder.FallingEdge())
-    {
-        if(System::GetNow() - press_enc < (uint32_t)kTapMs && !enc_moved)
-            bypass = !bypass;
+        drive_val = raw_d;
+        level_val = raw_l;
     }
 
-    // Button 1: tap cycles the routing, hold toggles the cabinet sim
-    if(pod.button1.RisingEdge())
-        press_b1 = System::GetNow();
-    if(pod.button1.FallingEdge())
+    bool b1_down = pod.button1.Pressed();
+    bool b2_down = pod.button2.Pressed();
+
+    // Both buttons together: tap opens the preset menu, hold opens the tuner
+    if(b1_down && b2_down)
     {
-        if(System::GetNow() - press_b1 < (uint32_t)kHoldMs)
+        both_seen = true;
+        if(!both_down)
         {
-            route = (route + 1) & 3;
+            both_down = true;
+            both_t    = System::GetNow();
+        }
+        else if(!both_fired && System::GetNow() - both_t > 1200)
+        {
+            both_fired = true;
+            tuner_on   = true;
+            preset_mode = false;
+            tuner.Reset();
             flash = 1.0f;
         }
-        hold_b1 = false;
     }
-    if(pod.button1.Pressed() && System::GetNow() - press_b1 > (uint32_t)kHoldMs)
+    else if(both_down)
     {
-        if(!hold_b1)
+        if(!both_fired && System::GetNow() - both_t < 400)
         {
-            hold_b1  = true;
-            cab_on   = !cab_on;
-            flash    = 1.0f;
+            if(tuner_on)
+                tuner_on = false;
+            else
+                preset_mode = !preset_mode;
+            flash = 1.0f;
         }
+        both_down  = false;
+        both_fired = false;
     }
+    if(!b1_down && !b2_down)
+        both_seen = false;
 
-    // Button 2: tap cycles the gate, hold toggles load compensation
-    if(pod.button2.RisingEdge())
-        press_b2 = System::GetNow();
-    if(pod.button2.FallingEdge())
+    if(tuner_on)
     {
-        if(System::GetNow() - press_b2 < (uint32_t)kHoldMs)
+        // Any single control backs out of the tuner
+        if(pod.encoder.FallingEdge() || pod.button1.FallingEdge()
+           || pod.button2.FallingEdge())
         {
-            gate_idx = (gate_idx + 1) % 3;
-            flash    = 1.0f;
+            if(!both_seen)
+            {
+                tuner_on = false;
+                flash    = 1.0f;
+            }
         }
-        hold_b2 = false;
     }
-    if(pod.button2.Pressed() && System::GetNow() - press_b2 > (uint32_t)kHoldMs)
+    else if(preset_mode)
     {
-        if(!hold_b2)
+        // Encoder picks a slot, encoder tap loads, button 1 saves, button 2 exits
+        int32_t inc = pod.encoder.Increment();
+        if(inc != 0)
         {
-            hold_b2  = true;
-            comp_on  = !comp_on;
-            flash    = 1.0f;
+            slot += inc;
+            slot = (slot % kPresetCount + kPresetCount) % kPresetCount;
+            flash = 1.0f;
+        }
+        if(pod.encoder.FallingEdge() && !both_seen)
+        {
+            Settings& s = storage.GetSettings();
+            ApplyPreset(s.presets[slot], true);
+            s.last_slot = slot;
+            flash       = 1.0f;
+        }
+        if(pod.button1.FallingEdge() && !both_seen)
+        {
+            Settings& s = storage.GetSettings();
+            CapturePreset(s.presets[slot]);
+            s.last_slot = slot;
+            save_req    = true;
+            flash       = 1.0f;
+        }
+        if(pod.button2.FallingEdge() && !both_seen)
+        {
+            preset_mode = false;
+            flash       = 1.0f;
+        }
+    }
+    else
+    {
+        // Encoder: turn picks model A, held-turn picks model B, tap bypasses
+        int32_t inc = pod.encoder.Increment();
+        if(inc != 0)
+        {
+            if(pod.encoder.Pressed())
+            {
+                model_b += inc;
+                model_b  = (model_b % kNumModels + kNumModels) % kNumModels;
+                enc_moved = true;
+                ApplyModels(sr);
+            }
+            else
+            {
+                model_a += inc;
+                model_a  = (model_a % kNumModels + kNumModels) % kNumModels;
+                ApplyModels(sr);
+            }
+        }
+        if(pod.encoder.RisingEdge())
+        {
+            press_enc = System::GetNow();
+            enc_moved = false;
+        }
+        if(pod.encoder.FallingEdge() && !both_seen)
+        {
+            if(System::GetNow() - press_enc < (uint32_t)kTapMs && !enc_moved)
+                bypass = !bypass;
+        }
+
+        // Button 1: tap cycles the routing, hold toggles the cabinet sim
+        if(pod.button1.RisingEdge())
+            press_b1 = System::GetNow();
+        if(pod.button1.FallingEdge() && !both_seen)
+        {
+            if(System::GetNow() - press_b1 < (uint32_t)kHoldMs)
+            {
+                route = (route + 1) & 3;
+                flash = 1.0f;
+            }
+            hold_b1 = false;
+        }
+        if(pod.button1.Pressed()
+           && System::GetNow() - press_b1 > (uint32_t)kHoldMs)
+        {
+            if(!hold_b1)
+            {
+                hold_b1  = true;
+                cab_on   = !cab_on;
+                flash    = 1.0f;
+            }
+        }
+
+        // Button 2: tap cycles the gate, hold toggles load compensation
+        if(pod.button2.RisingEdge())
+            press_b2 = System::GetNow();
+        if(pod.button2.FallingEdge() && !both_seen)
+        {
+            if(System::GetNow() - press_b2 < (uint32_t)kHoldMs)
+            {
+                gate_idx = (gate_idx + 1) % 3;
+                flash    = 1.0f;
+            }
+            hold_b2 = false;
+        }
+        if(pod.button2.Pressed()
+           && System::GetNow() - press_b2 > (uint32_t)kHoldMs)
+        {
+            if(!hold_b2)
+            {
+                hold_b2  = true;
+                comp_on  = !comp_on;
+                flash    = 1.0f;
+            }
         }
     }
 
     // --- derived values, once per block ----------------------------------
-    float t  = powf(drive_k, kDriveCurve);
+    float t  = powf(drive_val, kDriveCurve);
     float ga = powf(10.0f, t * kModels[model_a].max_db / 20.0f);
     float gb = powf(10.0f, t * kModels[model_b].max_db / 20.0f);
     float ca = powf(ga, -kCompExp);
@@ -608,7 +950,7 @@ void AudioCallback(AudioHandle::InterleavingInputBuffer  in,
     float cb2      = powf(gb2, -kCompExp);
     float c2ga2    = 1.0f + (kModels[model_a].c2_gain - 1.0f) * t * 0.5f;
     float c2gb2    = 1.0f + (kModels[model_b].c2_gain - 1.0f) * t * 0.5f;
-    float level_g  = kLevelMax * powf(level_k, kLevelCurve);
+    float level_g  = kLevelMax * powf(level_val, kLevelCurve);
     float gate_thr = kGateThresh[gate_idx];
 
     for(int i = 0; i < 4; i++)
@@ -619,6 +961,19 @@ void AudioCallback(AudioHandle::InterleavingInputBuffer  in,
     // --- per sample -------------------------------------------------------
     for(size_t i = 0; i < size; i += 2)
     {
+        // The tuner always listens to the clean input, so it is ready the
+        // instant you call it up
+        tuner.Process(in[i]);
+        if((++tuner_poll & 255) == 0)
+            tuner_hz = tuner.Estimate();
+
+        if(tuner_on)
+        {
+            out[i] = out[i + 1] = 0.0f;
+            flash -= flash * kFlashDecay;
+            continue;
+        }
+
         if(bypass)
         {
             out[i]     = in[i];
@@ -699,7 +1054,64 @@ void AudioCallback(AudioHandle::InterleavingInputBuffer  in,
     }
 
     // --- LEDs -------------------------------------------------------------
-    if(bypass)
+    if(tuner_on)
+    {
+        // LED 1 is the flat side, LED 2 the sharp side, both green in tune
+        float r = 0.0f, g = 0.0f, b = 0.0f;
+        if(tuner_hz > 0.0f)
+        {
+            float n     = 69.0f + 12.0f * log2f(tuner_hz / 440.0f);
+            float cents = (n - roundf(n)) * 100.0f;
+            float ac    = fabsf(cents);
+            float bright = 0.45f + 0.55f * (ac > 50.0f ? 1.0f : ac / 50.0f);
+
+            if(ac <= kTunerInTune)
+            {
+                r = 0.05f; g = 1.0f; b = 0.15f;
+                pod.led1.Set(r, g, b);
+                pod.led2.Set(r, g, b);
+            }
+            else
+            {
+                // Amber when close, red when far out
+                float near = ac <= kTunerNear ? 1.0f : 0.0f;
+                r = bright;
+                g = bright * (near ? 0.55f : 0.10f);
+                b = bright * 0.03f;
+                if(cents < 0.0f)
+                {
+                    pod.led1.Set(r, g, b);
+                    pod.led2.Set(0.0f, 0.0f, 0.0f);
+                }
+                else
+                {
+                    pod.led1.Set(0.0f, 0.0f, 0.0f);
+                    pod.led2.Set(r, g, b);
+                }
+            }
+        }
+        else
+        {
+            // No note: slow dim pulse on both
+            float p = 0.15f + 0.15f * flash;
+            pod.led1.Set(p, p, p);
+            pod.led2.Set(p, p, p);
+        }
+        flash -= flash * kFlashDecay;
+    }
+    else if(preset_mode)
+    {
+        // One hue per slot, pulsing to show you are in the menu
+        float h   = (float)slot / (float)kPresetCount;
+        float r   = 0.5f + 0.5f * cosf(2.0f * kPi * h);
+        float g   = 0.5f + 0.5f * cosf(2.0f * kPi * (h - 0.333f));
+        float bb  = 0.5f + 0.5f * cosf(2.0f * kPi * (h + 0.333f));
+        float lvl = 0.35f + 0.65f * flash;
+        pod.led1.Set(r * lvl, g * lvl, bb * lvl);
+        pod.led2.Set(flash * 0.8f, flash * 0.8f, flash * 0.8f);
+        flash -= flash * kFlashDecay;
+    }
+    else if(bypass)
     {
         pod.led1.Set(0.06f, 0.0f, 0.0f);
         pod.led2.Set(0.0f, 0.0f, 0.0f);
@@ -748,10 +1160,46 @@ int main(void)
     load_comp.Reset();
     BiquadHighShelf(load_comp, 2200.0f, 4.5f, sr);
 
+    tuner.Init(sr);
+
     ApplyModels(sr);
+
+    // Presets. On a fresh chip (magic mismatch) the defaults are committed so
+    // the first boot has something sane to recall.
+    Settings defaults;
+    for(int i = 0; i < kPresetCount; i++)
+        defaults.presets[i] = kDefaultPreset;
+    defaults.last_slot = 0;
+    defaults.magic     = kSettingsMagic;
+
+    storage.Init(defaults);
+
+    Settings& st = storage.GetSettings();
+    if(st.magic != kSettingsMagic || st.last_slot < 0
+       || st.last_slot >= kPresetCount)
+    {
+        for(int i = 0; i < kPresetCount; i++)
+            st.presets[i] = kDefaultPreset;
+        st.last_slot = 0;
+        st.magic     = kSettingsMagic;
+        storage.Save();
+    }
+    else
+    {
+        slot = st.last_slot;
+        ApplyPreset(st.presets[slot], true);
+    }
 
     pod.StartAdc();
     pod.StartAudio(AudioCallback);
 
-    while(1) {}
+    while(1)
+    {
+        // Flash writes stall, so they happen here rather than in the callback
+        if(save_req)
+        {
+            save_req = false;
+            storage.Save();
+        }
+    }
 }
