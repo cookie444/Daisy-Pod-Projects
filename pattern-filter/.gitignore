@@ -1,0 +1,16 @@
+# Build output
+build/
+
+# Vendored Daisy libraries (third-party, see README for setup)
+lib/
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
