@@ -9,6 +9,7 @@ folder is a standalone firmware project with its own Makefile.
 | [stutter-glitch](stutter-glitch/) | Euclidean-pattern stutter/glitch — CHOP, STUTTER, PITCH, REVERSE |
 | [buffer-scramble](buffer-scramble/) | Slice re-sequencer — captures a window of 8 slices and replays it shuffled |
 | [specter-resonator](specter-resonator/) | Resonant bank — your playing excites 16 tuned resonators, freeze holds the ring. Builds under `experimental-builds/` |
+| [legacy-harmonic-saturator](legacy-harmonic-saturator/) | Dual-engine guitar drive — two models, series in either order or parallel, cabinet sim for going direct |
 
 ## Setup
 
@@ -62,6 +63,7 @@ Daisy-Pod-Projects/
 ├── stutter-glitch/   # Euclidean stutter/glitch pedal
 ├── buffer-scramble/  # Slice re-sequencer
 ├── specter-resonator/  # Resonant bank, builds under experimental-builds/
+├── legacy-harmonic-saturator/  # Dual-engine guitar drive with cabinet sim
 ├── lib/              # libDaisy + DaisySP (gitignored, see Setup)
 └── .gitignore
 ```
