@@ -27,8 +27,9 @@ static constexpr float kFbMax        = 0.995f;
 static constexpr float kFreezeFb     = 0.999f;
 static constexpr float kAllpassG     = 0.7f;
 static constexpr float kOnset        = 0.02f;   // level that counts as a note
-static constexpr float kClearHoldMs  = 1000.0f;
-static constexpr float kOutTrim      = 0.8f;
+static constexpr float kOutTrim      = 1.5f;   // makeup gain
+static constexpr float kTapeDrive    = 1.3f;   // subtle saturation, flavour not fuzz
+static constexpr float kTapeHfHz     = 9000.0f;// gentle roll-off of the tape highs
 
 // Encoder positions: damping in the comb feedback, dark to bright
 static constexpr int   kNumTones = 5;
@@ -43,13 +44,21 @@ static float swell      = 0.0f;
 static float swell_gain = 0.0f;
 static float env        = 0.0f;
 static float fb         = 0.9f;
-static float size       = 1.0f;
+static float room       = 1.0f;
 static bool  frozen     = false;
+static bool  tape       = false;
 static bool  bypass     = false;
+
+static OnePole tape_l, tape_r;
 
 static bool btn1_prev = false;
 static bool btn2_prev = false;
 static bool enc_prev  = false;
+
+static float Saturate(float x)
+{
+    return tanhf(x);
+}
 
 static float ClampF(float x, float lo, float hi)
 {
@@ -110,7 +119,7 @@ void AudioCallback(AudioHandle::InterleavingInputBuffer  in,
 
     // Knob 1 -> swell time, Knob 2 -> size and decay
     float swell_ms = kMinSwellMs * powf(kMaxSwellMs / kMinSwellMs, pod.knob1.Process());
-    size           = kSizeMin + pod.knob2.Process() * (kSizeMax - kSizeMin);
+    room = kSizeMin + pod.knob2.Process() * (kSizeMax - kSizeMin);
 
     float sr = pod.AudioSampleRate();
 
@@ -118,18 +127,18 @@ void AudioCallback(AudioHandle::InterleavingInputBuffer  in,
     float attack  = 1.0f / (swell_ms * 0.001f * sr);
     float release = attack * 4.0f;
 
-    fb = frozen ? kFreezeFb : kFbMin + (size - kSizeMin) / (kSizeMax - kSizeMin)
+    fb = frozen ? kFreezeFb : kFbMin + (room - kSizeMin) / (kSizeMax - kSizeMin)
                                           * (kFbMax - kFbMin);
 
     for(int i = 0; i < kNumCombs; i++)
     {
-        comb_l[i].SetDelay((float)(kCombLen[i] * size));
-        comb_r[i].SetDelay((float)(kCombLen[i] * size + kStereoSpread));
+        comb_l[i].SetDelay((float)(kCombLen[i] * room));
+        comb_r[i].SetDelay((float)(kCombLen[i] * room + kStereoSpread));
     }
     for(int i = 0; i < kNumAllpass; i++)
     {
-        ap_l[i].SetDelay((float)(kAllpassLen[i] * size));
-        ap_r[i].SetDelay((float)(kAllpassLen[i] * size + kStereoSpread));
+        ap_l[i].SetDelay((float)(kAllpassLen[i] * room));
+        ap_r[i].SetDelay((float)(kAllpassLen[i] * room + kStereoSpread));
     }
 
     // Edges are detected from the held state: RisingEdge stays true for a whole
@@ -144,12 +153,14 @@ void AudioCallback(AudioHandle::InterleavingInputBuffer  in,
     btn2_prev = b2;
     enc_prev  = enc_down;
 
-    // Button 1 -> freeze the tail, hold to clear it
+    // Button 1 -> freeze the tail (latch), Button 2 -> tape saturation on and off
+    // Button 1 used to also clear after a long hold, which made a single hold
+    // freeze and then wipe the reverb a second later.
     if(b1_press)
         frozen = !frozen;
 
-    if((b1 && pod.button1.TimeHeldMs() > kClearHoldMs) || b2_press)
-        ClearTank();
+    if(b2_press)
+        tape = !tape;
 
     // Encoder turn -> tone, encoder press -> bypass
     int32_t inc = pod.encoder.Increment();
@@ -186,8 +197,18 @@ void AudioCallback(AudioHandle::InterleavingInputBuffer  in,
         float wl = Tank(send, comb_l, ap_l, damp_l);
         float wr = Tank(send, comb_r, ap_r, damp_r);
 
-        out[i]     = wl * kOutTrim;
-        out[i + 1] = wr * kOutTrim;
+        // Tape stage, off by default: a little tanh glue and the top end rolled
+        // off, so the pads sit warmer instead of harder
+        if(tape)
+        {
+            wl = Saturate(wl * kTapeDrive);
+            wr = Saturate(wr * kTapeDrive);
+            wl = tape_l.Process(wl);
+            wr = tape_r.Process(wr);
+        }
+
+        out[i]     = Saturate(wl * kOutTrim);
+        out[i + 1] = Saturate(wr * kOutTrim);
     }
 
     // LED 1 follows the swell, LED 2 shows freeze state
@@ -202,9 +223,11 @@ void AudioCallback(AudioHandle::InterleavingInputBuffer  in,
         pod.led1.Set(s * 0.7f, s * 0.7f, s);
 
         if(frozen)
-            pod.led2.Set(0.9f, 0.9f, 1.0f);
+            pod.led2.Set(0.9f, 0.9f, 1.0f);           // white = frozen
+        else if(tape)
+            pod.led2.Set(1.0f, 0.55f, 0.05f);          // amber = tape on
         else
-            pod.led2.Set(0.05f, 0.05f, 0.35f + 0.65f * s);
+            pod.led2.Set(0.05f, 0.05f, 0.35f + 0.65f * s);  // blue = clean
     }
 
     pod.UpdateLeds();
@@ -214,6 +237,8 @@ int main(void)
 {
     pod.Init();
     pod.SetAudioBlockSize(4);
+
+    float sample_rate = pod.AudioSampleRate();
 
     for(int i = 0; i < kNumCombs; i++)
     {
@@ -226,6 +251,11 @@ int main(void)
         ap_r[i].Init();
     }
     ClearTank();
+
+    tape_l.Init();
+    tape_r.Init();
+    tape_l.SetFrequency(kTapeHfHz / sample_rate);
+    tape_r.SetFrequency(kTapeHfHz / sample_rate);
 
     pod.StartAdc();
     pod.StartAudio(AudioCallback);

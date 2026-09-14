@@ -8,12 +8,12 @@ An auto-swell into an infinite reverb for the **Electrosmith Daisy Pod**, built 
 |---------|----------|
 | Knob 1 | SWELL — how slowly each note blooms in, 20 ms to 2 s |
 | Knob 2 | SIZE — room size and decay together |
-| Button 1 | Press to freeze the tail. Hold 1 s to clear it |
-| Button 2 | Press to clear the tank |
+| Button 1 | Press to freeze the tail. Press again to release it |
+| Button 2 | Toggle the tape saturation circuit, off by default |
 | Encoder turn | Tone — damping in the feedback, dark to bright |
 | Encoder press | Bypass toggle — both LEDs go dark |
 | LED 1 | Swell amount |
-| LED 2 | Dim blue normally, bright white while frozen |
+| LED 2 | Blue clean, amber tape on, white frozen |
 
 ## How it works
 
@@ -61,6 +61,8 @@ make program-dfu   # with the Pod in DFU mode: hold BOOT, tap RESET
 | `kSizeMin` / `kSizeMax` | `0.4` / `1.3` | Knob 2 range |
 | `kFbMin` / `kFbMax` | `0.60` / `0.995` | Comb feedback range |
 | `kFreezeFb` | `0.999` | Feedback while frozen |
+| `kTapeDrive` | `1.3` | Subtle saturation amount, flavour not fuzz |
+| `kTapeHfHz` | `9000` | Where the tape top end rolls off |
 | `kTones[]` | `0.85 … 0.12` | Damping per encoder position |
 | `kOnset` | `0.02` | Level that counts as a note starting |
 
