@@ -18,7 +18,7 @@ An endless sweeping phaser for the **Electrosmith Daisy Pod**, built on libDaisy
 ## How it works
 
 - Six first order allpass sections in series, `y = c·x + x1 - c·y1`, with feedback around the whole chain. Each section has flat magnitude and moving phase, which is what makes the notches.
-- The coefficient comes from a sawtooth sweep: `c = (1 - tan(pi·f/sr)) / (1 + tan(pi·f/sr))`, with `f` sweeping exponentially from 120 Hz to 2.4 kHz.
+- The -90° point of `(c + z⁻¹)/(1 + c z⁻¹)` sits at `cos(w) = -2c/(1+c²)`, so the coefficient for a notch at `f0` is `c = -tan(π/4 − π·f0/sr)`, with `f0` sweeping exponentially from 120 Hz to 2.4 kHz.
 - The barberpole trick is that the notches are evenly spaced, so when the saw snaps back to the bottom the jump lands where another notch already was. Your ear follows the one climbing and hears an endless rise.
 - BOTH flips direction at the end of each sweep, so up and down alternate.
 - This DaisySP build has no `FrequencyShift`, so the sweep is an allpass cascade rather than a shifted feedback loop.

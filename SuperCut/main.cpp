@@ -160,8 +160,13 @@ void AudioCallback(AudioHandle::InterleavingInputBuffer  in,
             dir = want_dir;
 
         float f0 = kSweepMinHz * powf(kSweepMaxHz / kSweepMinHz, phase);
-        float t  = tanf(kPi * f0 / sr);
-        coeff    = (1.0f - t) / (1.0f + t);
+
+        // The -90 degree point of (c + z^-1)/(1 + c z^-1) sits at
+        // cos(w) = -2c/(1 + c^2), so the right coefficient for a notch at f0 is
+        // c = -tan(pi/4 - pi*f0/sr). The earlier (1-t)/(1+t) form only moved
+        // the phase a fraction of a radian across the whole sweep, which is why
+        // there was no audible phasing.
+        coeff = -tanf(kPi * 0.25f - kPi * f0 / sr);
 
         float wl = Chain(inl, coeff, ax_l, ay_l, fb_l);
         float wr = Chain(inr, coeff, ax_r, ay_r, fb_r);
