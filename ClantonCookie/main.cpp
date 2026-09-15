@@ -28,8 +28,8 @@ static constexpr float kFreezeFb     = 0.999f;
 static constexpr float kAllpassG     = 0.7f;
 static constexpr float kOnset        = 0.02f;   // level that counts as a note
 static constexpr float kOutTrim      = 1.5f;   // makeup gain
-static constexpr float kTapeDrive    = 1.3f;   // subtle saturation, flavour not fuzz
-static constexpr float kTapeHfHz     = 9000.0f;// gentle roll-off of the tape highs
+static constexpr float kTapeDrive    = 2.2f;   // clear saturation, still tape not fuzz
+static constexpr float kTapeHfHz     = 7000.0f;// more obvious roll-off of the tape highs
 
 // Encoder positions: damping in the comb feedback, dark to bright
 static constexpr int   kNumTones = 5;

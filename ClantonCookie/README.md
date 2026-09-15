@@ -15,6 +15,29 @@ An auto-swell into an infinite reverb for the **Electrosmith Daisy Pod**, built 
 | LED 1 | Swell amount |
 | LED 2 | Blue clean, amber tape on, white frozen |
 
+## Use
+
+A pad machine: your playing disappears into a bloom and comes out the other side
+as a reverb. Set it up, in this order:
+
+1. **Start with Knob 2 (SIZE) around noon** and Knob 1 (SWELL) low — a quarter
+   turn. Bypass off (encoder press) so the LEDs are lit.
+2. Play a note. With SWELL low it arrives almost instantly; turn SWELL up and
+   each note fades in slowly instead of attacking.
+3. Build a chord — keep playing notes and they ring and stack into the tank.
+   Turn Knob 2 up for a bigger, longer room; down for a tighter one.
+4. **Freeze it:** press Button 1. The tail holds forever, the dry input stops
+   feeding it, and LED 2 goes white. Play over the frozen pad, then press
+   Button 1 again to release it and start feeding the tank again.
+5. **Warm it up:** press Button 2 and LED 2 goes amber — a tape saturation
+   stage (2.2x tanh drive, 7 kHz roll-off) makes the pads sit thicker and
+   darker. Press again to go back to clean blue.
+6. **Darken or brighten the room:** turn the encoder. Counter-clockwise is
+   darker, damped tails; clockwise is brighter and more present.
+
+If the pad gets too loud, back off Knob 2 or Knob 1 — the output is soft-clipped,
+not limited, so it can sit at full scale for a while.
+
 ## How it works
 
 - The swell is an envelope follower driving a gain. It rises over the swell time and falls four times faster, so every note arrives as a bloom with the pick attack removed.
@@ -61,8 +84,8 @@ make program-dfu   # with the Pod in DFU mode: hold BOOT, tap RESET
 | `kSizeMin` / `kSizeMax` | `0.4` / `1.3` | Knob 2 range |
 | `kFbMin` / `kFbMax` | `0.60` / `0.995` | Comb feedback range |
 | `kFreezeFb` | `0.999` | Feedback while frozen |
-| `kTapeDrive` | `1.3` | Subtle saturation amount, flavour not fuzz |
-| `kTapeHfHz` | `9000` | Where the tape top end rolls off |
+| `kTapeDrive` | `2.2` | Saturation amount, obvious but still tape |
+| `kTapeHfHz` | `7000` | Where the tape top end rolls off |
 | `kTones[]` | `0.85 … 0.12` | Damping per encoder position |
 | `kOnset` | `0.02` | Level that counts as a note starting |
 
