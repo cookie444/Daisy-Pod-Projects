@@ -10,7 +10,7 @@ static DaisyPod pod;
 // Tuning
 // ---------------------------------------------------------------------------
 static constexpr int   kPatternSteps  = 16;     // steps per bar, sixteenth notes
-static constexpr int   kStepsPerBeat  = 4;      // so the bar is four beats
+static constexpr int   kStepsPerBeat  = 1;      // one step per tapped beat
 static constexpr float kMinCutoffHz   = 250.0f; // where the filter closes to
 static constexpr float kMaxCutoffHz   = 8000.0f;// ceiling of Knob 1
 static constexpr float kClosedLevel   = 0.35f;  // how far a non-hit step opens
@@ -123,7 +123,9 @@ static void UpdateStep()
 {
     float v = pattern[step] ? 1.0f : kClosedLevel * contour[step];
     cutoff_target = kMinCutoffHz * powf(cutoff_hi / kMinCutoffHz, v);
-    flash         = pattern[step] ? 1.0f : 0.3f;
+    // One bright pulse per step, which is one tapped beat, so LED 1 lands on your
+    // physical taps. Hits are full, the rest half bright.
+    flash = pattern[step] ? 1.0f : 0.5f;
 
     step++;
     if(step >= kPatternSteps)
@@ -154,6 +156,7 @@ void AudioCallback(AudioHandle::InterleavingInputBuffer  in,
         BuildPattern(hits);
     }
 
+    // Step length is a sixteenth of the tapped beat
     float step_ms = tempo_ms / (float)kStepsPerBeat;
     step_len      = (size_t)(step_ms * 0.001f * pod.AudioSampleRate());
     if(step_len < 32)

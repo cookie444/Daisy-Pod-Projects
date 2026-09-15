@@ -12,7 +12,7 @@ A step filter sequencer for the **Electrosmith Daisy Pod**, built on libDaisy an
 | Button 2 | LATCH — hold to freeze the cutoff wherever it is |
 | Encoder turn | Shape: GATE → RAMP UP → RAMP DOWN → TRIANGLE → RANDOM |
 | Encoder press | Bypass toggle — both LEDs go dark |
-| LED 1 | Flash per step, bright on a hit |
+| LED 1 | Flash per step — one step is one tapped beat, so it lands on your taps |
 | LED 2 | Shape colour, goes to full brightness while latched |
 
 ## Shapes
@@ -27,7 +27,7 @@ A step filter sequencer for the **Electrosmith Daisy Pod**, built on libDaisy an
 
 ## How it works
 
-- One bar is sixteen steps at sixteenth notes, so a step is a quarter of the tapped beat.
+- One bar is sixteen steps, one step per tapped beat, so a whole pattern is sixteen beats and LED 1 flashes in time with your taps.
 - Each step gets a value `v`: a hit is 1.0, everything else is `kClosedLevel × contour[step]`, and the cutoff is an exponential map between 250 Hz and the range you set.
 - The cutoff glides to its target with a one-pole (~3 ms) so the steps snap without clicking.
 - Two `Svf` lowpass filters, one per channel, at a fixed resonance.
@@ -85,7 +85,7 @@ All the "taste" constants are grouped at the top of `main.cpp`:
 
 | Constant | Default | Meaning |
 |----------|---------|---------|
-| `kPatternSteps` / `kStepsPerBeat` | `16` / `4` | Sixteenth notes, one bar per pattern |
+| `kPatternSteps` / `kStepsPerBeat` | `16` / `1` | One step per tapped beat |
 | `kMinCutoffHz` / `kMaxCutoffHz` | `250` / `8000` | Closed cutoff, and the ceiling of Knob 1 |
 | `kClosedLevel` | `0.35` | How far a non-hit step opens |
 | `kResonance` | `0.6` | Filter resonance |
