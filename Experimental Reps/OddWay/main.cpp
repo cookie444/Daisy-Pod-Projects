@@ -16,8 +16,13 @@ static constexpr float kF1Gain      = 1.0f;
 static constexpr float kF2Gain      = 0.6f;
 static constexpr float kF3Gain      = 0.25f;
 static constexpr float kOutputTrim  = 0.7f;
-static constexpr float kSweepBeats  = 4.0f;   // one sweep per bar
-static constexpr float kDefaultBeatMs = 500.0f;
+static constexpr float kPronounceMs = 120.0f; // length of the per-beat blip
+static constexpr float kExcDrive    = 0.08f;  // noise burst into the formants
+static constexpr float kArticMin    = 0.15f;  // floor so the beat always plays
+static constexpr float kArticMax    = 1.0f;
+static constexpr float kBlinkDuty   = 0.4f;   // LED on fraction of each beat
+static constexpr float kFlashDecay  = 0.0012f;
+static constexpr float kDefaultBeatMs = 500.0f;  // 120 BPM
 static constexpr float kMinBeatMs   = 200.0f;
 static constexpr float kMaxBeatMs   = 1500.0f;
 static constexpr float kTapTimeoutMs = 3000.0f;
@@ -41,20 +46,24 @@ static const float kVowelColor[kNumVowels][3] = {
     {0.25f, 0.4f, 1.0f},   // U blue
 };
 
-// Encoder positions: how far the whole stack is transposed, in semitones
-static constexpr int   kNumSizes = 5;
-static constexpr float kSizes[kNumSizes] = {-12.0f, -5.0f, 0.0f, 5.0f, 12.0f};
-
 static Svf form_l[kNumFormants];
 static Svf form_r[kNumFormants];
 
-static int   size_idx   = 2;    // starts at zero transposition
-static float vowel      = 0.0f; // 0 to kNumVowels - 1
-static float sweep_phase = 0.0f;
-static bool  sweeping   = false;
-static float mix        = 0.8f;
-static bool  bypass     = false;
-static float level      = 0.0f;
+static int   vowel        = 0;    // the encoder picks which one you hear
+static float articulation = 1.0f; // Knob 1, how hard each beat pronounces
+static float pronounce    = 0.0f; // per-beat articulation envelope
+static float mix          = 0.8f;
+static bool  bypass       = false;
+static float level        = 0.0f;
+static float flash        = 0.0f;
+
+// Beat clock. Four plosives per beat, the LED blinks once per beat.
+static constexpr int   kSubsPerBeat = 4;
+static size_t beat_len = 2400;
+static size_t beat_pos = 0;
+static size_t sub_len  = 600;
+static size_t sub_pos  = 0;
+static bool   double_time = false;
 
 // Tap tempo
 static float    tempo_ms         = kDefaultBeatMs;
@@ -67,6 +76,8 @@ static bool btn1_prev = false;
 static bool btn2_prev = false;
 static bool enc_prev  = false;
 
+static uint32_t rng_state = 0x9E3779B9u;
+
 static float ClampF(float x, float lo, float hi)
 {
     if(x < lo)
@@ -76,28 +87,34 @@ static float ClampF(float x, float lo, float hi)
     return x;
 }
 
-// Interpolated formant centres for the current vowel position, transposed by
-// the voice size
+// xorshift32, returns -1.0 to 1.0
+static float NoiseF()
+{
+    rng_state ^= rng_state << 13;
+    rng_state ^= rng_state >> 17;
+    rng_state ^= rng_state << 5;
+    return (float)(rng_state >> 8) * (2.0f / 16777216.0f) - 1.0f;
+}
+
 static void UpdateFormants()
 {
-    float p = ClampF(vowel, 0.0f, (float)(kNumVowels - 1));
-    int   i = (int)p;
-    if(i >= kNumVowels - 1)
-        i = kNumVowels - 2;
-    float fr = p - (float)i;
-
-    float shift = powf(2.0f, kSizes[size_idx] / 12.0f);
-
+    const float* v = kVowels[vowel];
     for(int f = 0; f < kNumFormants; f++)
     {
-        float hz = kVowels[i][f] + fr * (kVowels[i + 1][f] - kVowels[i][f]);
-        hz *= shift;
+        float hz = v[f];
         if(hz > 16000.0f)
             hz = 16000.0f;
 
         form_l[f].SetFreq(hz);
         form_r[f].SetFreq(hz);
     }
+}
+
+// One beat landed: re-pronounce the vowel
+static void Pronounce()
+{
+    pronounce = 1.0f;
+    flash     = 1.0f;
 }
 
 void AudioCallback(AudioHandle::InterleavingInputBuffer  in,
@@ -107,9 +124,11 @@ void AudioCallback(AudioHandle::InterleavingInputBuffer  in,
     pod.ProcessAnalogControls();
     pod.ProcessDigitalControls();
 
-    // Knob 1 -> vowel, Knob 2 -> mix
-    float knob_vowel = pod.knob1.Process() * (float)(kNumVowels - 1);
-    mix              = pod.knob2.Process();
+    // Knob 1 -> how hard each beat pronounces, Knob 2 -> mix. The articulation
+    // is floored so the beat is audible even with the knob at zero
+    float knob_a    = pod.knob1.Process();
+    articulation    = kArticMin + knob_a * (kArticMax - kArticMin);
+    mix             = pod.knob2.Process();
 
     // Edges are detected from the held state: RisingEdge stays true for a whole
     // debounce window, and this callback runs far more often than that
@@ -123,7 +142,7 @@ void AudioCallback(AudioHandle::InterleavingInputBuffer  in,
     btn2_prev = b2;
     enc_prev  = enc_down;
 
-    // Button 1 -> tap tempo sets the sweep rate, hold stops the sweep
+    // Button 1 -> tap tempo, one beat per tap, like 16Jobs. Hold to reset.
     if(b1_press)
     {
         uint32_t now = System::GetNow();
@@ -161,41 +180,48 @@ void AudioCallback(AudioHandle::InterleavingInputBuffer  in,
                 for(int i = 0; i < tap_count; i++)
                     avg += tap_intervals[i];
 
-                tempo_ms    = ClampF(avg / (float)tap_count, kMinBeatMs, kMaxBeatMs);
+                tempo_ms = ClampF(avg / (float)tap_count, kMinBeatMs, kMaxBeatMs);
                 last_tap_ms = now;
-                sweeping    = true;
             }
         }
+
+        // Every tap fires the plosive right away and re-syncs the grid, so the
+        // audio answers the press and the quarter-note beat follows your taps
+        beat_pos = 0;
+        sub_pos  = 0;
+        Pronounce();
     }
     if(b1 && pod.button1.TimeHeldMs() > kTempoHoldMs)
     {
-        sweeping  = false;
+        tempo_ms  = kDefaultBeatMs;
         first_tap = true;
         tap_count = 0;
     }
 
-    // Button 2 -> step to the next vowel, which is what makes it talk
+    // Button 2 -> toggle double time: eight plosives per beat instead of four
     if(b2_press)
-    {
-        static int stepped = 0;
-        stepped            = (stepped + 1) % kNumVowels;
-        sweep_phase        = (float)stepped;
-        sweeping           = false;
-    }
+        double_time = !double_time;
 
-    // Encoder turn -> voice size, encoder press -> bypass
+    // Encoder turn -> live vowel, encoder press -> bypass
     int32_t inc = pod.encoder.Increment();
     if(inc != 0)
     {
-        size_idx = ((size_idx + inc) % kNumSizes + kNumSizes) % kNumSizes;
+        vowel = ((vowel + inc) % kNumVowels + kNumVowels) % kNumVowels;
         UpdateFormants();
+        Pronounce();
     }
 
     if(enc_press)
         bypass = !bypass;
 
-    float sr         = pod.AudioSampleRate();
-    float sweep_inc  = 1.0f / (kSweepBeats * tempo_ms * 0.001f * sr);
+    beat_len = (size_t)(tempo_ms * 0.001f * pod.AudioSampleRate());
+    if(beat_len < 32)
+        beat_len = 32;
+    sub_len = beat_len / (double_time ? kSubsPerBeat * 2 : kSubsPerBeat);
+    if(sub_len < 8)
+        sub_len = 8;
+
+    float pronounce_decay = 1.0f / (kPronounceMs * 0.001f * pod.AudioSampleRate());
 
     for(size_t i = 0; i < size; i += 2)
     {
@@ -209,25 +235,29 @@ void AudioCallback(AudioHandle::InterleavingInputBuffer  in,
             continue;
         }
 
-        if(sweeping)
+        if(++sub_pos >= sub_len)
         {
-            sweep_phase += sweep_inc;
-            if(sweep_phase >= (float)(kNumVowels - 1))
-                sweep_phase -= (float)(kNumVowels - 1);
-            vowel = sweep_phase;
-        }
-        else
-        {
-            vowel = knob_vowel;
+            Pronounce();  // four plosives per beat, evenly spaced
+            sub_pos = 0;
         }
 
-        UpdateFormants();
+        // Articulation blip: spikes at the beat and decays
+        pronounce -= pronounce * pronounce_decay;
+        if(pronounce < 0.0f)
+            pronounce = 0.0f;
+
+        // The blip also fires a short noise burst into the formants, so the
+        // vowel is actually re-excited and speaks rather than just getting a
+        // level bump
+        float exc = pronounce * articulation * kExcDrive;
+        float xl  = inl + NoiseF() * exc;
+        float xr  = inr + NoiseF() * exc;
 
         float wl = 0.0f, wr = 0.0f;
         for(int f = 0; f < kNumFormants; f++)
         {
-            form_l[f].Process(inl);
-            form_r[f].Process(inr);
+            form_l[f].Process(xl);
+            form_r[f].Process(xr);
 
             float gain = (f == 0) ? kF1Gain : ((f == 1) ? kF2Gain : kF3Gain);
             wl += form_l[f].Band() * gain;
@@ -237,13 +267,23 @@ void AudioCallback(AudioHandle::InterleavingInputBuffer  in,
         wl *= kOutputTrim;
         wr *= kOutputTrim;
 
+        // The pronounce envelope lifts the wet level on each beat
+        float lift = 1.0f + pronounce * articulation * 1.2f;
+        wl *= lift;
+        wr *= lift;
+
         out[i]     = inl * (1.0f - mix) + wl * mix;
         out[i + 1] = inr * (1.0f - mix) + wr * mix;
 
         fonepole(level, fabsf(wl) + fabsf(wr), 0.0005f);
+        flash -= flash * kFlashDecay;
+
+        if(++beat_pos >= beat_len)
+            beat_pos = 0;
     }
 
-    // LED 1 follows the output level, LED 2 shows the vowel
+    // LED 1 blinks at the tapped tempo, on for a slice of each beat, so the
+    // beat is visible at a glance like a tap-tempo LED. LED 2 shows the vowel.
     if(bypass)
     {
         pod.led1.Set(0.0f, 0.0f, 0.0f);
@@ -251,17 +291,13 @@ void AudioCallback(AudioHandle::InterleavingInputBuffer  in,
     }
     else
     {
-        float lv = ClampF(level * 2.0f, 0.0f, 1.0f);
-        pod.led1.Set(lv * 0.9f, lv * 0.9f, lv);
+        bool on = beat_pos < (size_t)(beat_len * kBlinkDuty);
+        pod.led1.Set(on ? 1.0f : 0.0f, on ? 1.0f : 0.0f, on ? 1.0f : 0.0f);
 
-        int   vi = (int)(vowel + 0.5f);
-        if(vi >= kNumVowels)
-            vi = kNumVowels - 1;
-
-        float b = 0.3f + 0.7f * lv;
-        pod.led2.Set(kVowelColor[vi][0] * b,
-                     kVowelColor[vi][1] * b,
-                     kVowelColor[vi][2] * b);
+        float b = 0.6f;
+        pod.led2.Set(kVowelColor[vowel][0] * b,
+                     kVowelColor[vowel][1] * b,
+                     kVowelColor[vowel][2] * b);
     }
 
     pod.UpdateLeds();

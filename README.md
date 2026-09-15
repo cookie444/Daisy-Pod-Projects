@@ -13,7 +13,7 @@ folder is a standalone firmware project with its own Makefile.
 | [frugal-looper](frugal-looper/) | 60 second stereo looper — overdub, stop, erase, half speed / reverse / double |
 | [16Jobs](16Jobs/) | Step filter sequencer — Euclidean cutoff pattern with resonance and five shapes |
 | [SuperCut](SuperCut/) | Endless rising or falling allpass sweep with feedback |
-| [OddWay](OddWay/) | Vowel filter — three formants, tap-synced sweep, voice size |
+| [OddWay](Experimental Reps/OddWay/) | Beating vowel filter - tap-tempo quarter notes drive four plosives per beat, encoder picks the vowel |
 | [ClantonCookie](ClantonCookie/) | Auto-swell into a hand-built Schroeder reverb with infinite freeze |
 | [vertigo](vertigo/) | Tape wow, flutter and drift, stereo modulated delay |
 
@@ -73,9 +73,10 @@ Daisy-Pod-Projects/
 ├── frugal-looper/    # 60 second stereo looper
 ├── 16Jobs/           # Step filter sequencer
 ├── SuperCut/         # Endless sweeping phaser
-├── OddWay/           # Vowel filter
 ├── ClantonCookie/    # Auto-swell into infinite reverb
 ├── vertigo/          # Tape modulation
+├── Experimental Reps/  # In-progress builds, one folder each
+│   └── OddWay/       # Beating vowel filter
 ├── lib/              # libDaisy + DaisySP (gitignored, see Setup)
 └── .gitignore
 ```
