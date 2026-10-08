@@ -16,6 +16,7 @@ folder is a standalone firmware project with its own Makefile.
 | [OddWay](Experimental Reps/OddWay/) | Beating vowel filter - tap-tempo quarter notes drive four plosives per beat, encoder picks the vowel |
 | [ClantonCookie](ClantonCookie/) | Auto-swell into a hand-built Schroeder reverb with infinite freeze |
 | [vertigo](vertigo/) | Tape wow, flutter and drift, stereo modulated delay |
+| [ensemble](ensemble/) | Ensemble chorus — Solina-style phase-offset voice bank, tap tempo, random cassette bump |
 
 ## Setup
 
@@ -75,6 +76,7 @@ Daisy-Pod-Projects/
 ├── SuperCut/         # Endless sweeping phaser
 ├── ClantonCookie/    # Auto-swell into infinite reverb
 ├── vertigo/          # Tape modulation
+├── ensemble/         # Ensemble chorus
 ├── Experimental Reps/  # In-progress builds, one folder each
 │   └── OddWay/       # Beating vowel filter
 ├── lib/              # libDaisy + DaisySP (gitignored, see Setup)
