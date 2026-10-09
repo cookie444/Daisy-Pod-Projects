@@ -17,6 +17,7 @@ folder is a standalone firmware project with its own Makefile.
 | [ClantonCookie](ClantonCookie/) | Auto-swell into a hand-built Schroeder reverb with infinite freeze |
 | [vertigo](vertigo/) | Tape wow, flutter and drift, stereo modulated delay |
 | [ensemble](ensemble/) | Ensemble chorus — Solina-style phase-offset voice bank, tap tempo, random cassette bump |
+| [oracle](oracle/) | Pitch-tracking mono synth — YIN-style pitch detection, PolyBLEP oscillators, envelope-swept resonant filter |
 
 ## Setup
 
@@ -77,6 +78,7 @@ Daisy-Pod-Projects/
 ├── ClantonCookie/    # Auto-swell into infinite reverb
 ├── vertigo/          # Tape modulation
 ├── ensemble/         # Ensemble chorus
+├── oracle/           # Pitch-tracking synth
 ├── Experimental Reps/  # In-progress builds, one folder each
 │   └── OddWay/       # Beating vowel filter
 ├── lib/              # libDaisy + DaisySP (gitignored, see Setup)
