@@ -3,6 +3,9 @@
 Effects for the **Electrosmith Daisy Pod**, built on libDaisy and DaisySP. Each
 folder is a standalone firmware project with its own Makefile.
 
+> **AI agents / assistants:** read [`AGENTS.md`](AGENTS.md) first — build & flash,
+> conventions, debugging, and the traps worth avoiding.
+
 | Project | What it is |
 |---------|------------|
 | [delay](delay/) | Analog-style delay — darkening repeats, tap tempo, tape wobble |
